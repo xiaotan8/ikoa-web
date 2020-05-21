@@ -25,10 +25,12 @@ APP.config.update(
 )
 
 
-REGEXNUMSTRING = r"^([a-zA-Z]{1,10}\-[0-9]{1,10})(,([a-zA-Z]{1,10}\-[0-9]{1,10}))*$"
-REGEXCIDSTRING = r"^([\w]{3,20})(,[\w]{3,20})*$"
+REGEXNUMSTRING = r"^[a-zA-Z]{1,10}\-[0-9]{1,10}(?:,[a-zA-Z]{1,10}\-[0-9]{1,10})*$"
+REGEXCIDSTRING = r"^[\w]{3,20}(?:,[\w]{3,20})*$"
+REGEXMGSSTRING = r"^(?:\d{3})?[a-zA-Z]{2,6}-\d{3,5}(?:,(?:\d{3})?[a-zA-Z]{2,6}-\d{3,5})*$"
 REGEXNUM = re.compile(REGEXNUMSTRING)
 REGEXCID = re.compile(REGEXCIDSTRING, flags=re.ASCII)
+REGEXMGS = re.compile(REGEXMGSSTRING)
 
 
 LOGIN_MANAGER = LoginManager()
@@ -71,7 +73,7 @@ class LoginForm(FlaskForm):
 
 
 class DownloadForm(FlaskForm):
-    id_type = SelectField('id_type', choices=[('num', 'num'), ('cid', 'cid')])
+    id_type = SelectField('id_type', choices=[('num', 'num'), ('cid', 'cid'), ('mgs', 'mgs')])
     id_value = StringField('id_value', validators=[DataRequired()])
     id_tag = StringField('id_tag', validators=[Optional(), Regexp(r"^[\w]{1,10}$", message="Invalid tag!")])
     submit = SubmitField('Submit')
@@ -82,12 +84,16 @@ class DownloadForm(FlaskForm):
             if not match_num:
                 raise ValidationError('Invalid num format!')
             return match_num
-        ## self.id_type.data == "cid"
-        else:
+        elif self.id_type.data == "cid":
             match_cid = REGEXCID.match(field.data or "")
             if not match_cid:
                 raise ValidationError('Invalid cid format!')
             return match_cid
+        else:
+            match_mgs = REGEXMGS.match(field.data or "")
+            if not match_mgs:
+                raise ValidationError('Invalid mgs format!')
+            return match_mgs
 
 
 TASK = Task()
@@ -130,20 +136,13 @@ def login():
 
 def add_ts_task(id_value, id_type, id_tag):
     TASK.task_index += 1
-
     id_list = id_value.split(',')
-    if len(id_list) <= 12:
-        cmd = 'ts bash task.sh {} {} {} {}'.format(id_value, id_type, TASK.task_id, id_tag)
+    list_group = [id_list[n:n + 12] for n in range(0, len(id_list), 12)]
+    for item in list_group:
+        cmd = 'ts bash task.sh {} {} {} {}'.format(','.join(item), id_type, TASK.task_id, id_tag)
         os.system(cmd)
         TASK.task_queue.append(TASK.task_id)
         TASK.task_id += 1
-    else:
-        list_group = [id_list[n:n+12] for n in range(0, len(id_list), 12)]
-        for item in list_group:
-            cmd = 'ts bash task.sh {} {} {} {}'.format(','.join(item), id_type, TASK.task_id, id_tag)
-            os.system(cmd)
-            TASK.task_queue.append(TASK.task_id)
-            TASK.task_id += 1
 
 
 @APP.route('/', methods=['GET', 'POST'])
